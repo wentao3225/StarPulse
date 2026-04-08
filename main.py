@@ -86,8 +86,7 @@ def run_github(args):
         console.print(f"[green]已写入飞书表格 {week}，共 {len(to_write)} 条[/green]")
         dedup.save()
     elif args.dry_run:
-        console.print("[yellow]dry-run 模式，跳过飞书写入[/yellow]")
-        dedup.save()
+        console.print("[yellow]dry-run 模式，跳过飞书写入（去重状态不保存）[/yellow]")
 
     if args.export == "json":
         path = export_json(repos, args.period)

@@ -97,7 +97,8 @@ def _build_html(ai_news: list[NewsItem], global_news: list[NewsItem]) -> str:
 def send_daily_news(ai_news: list[NewsItem], global_news: list[NewsItem]) -> None:
     """发送每日资讯邮件（收发同一个 QQ 邮箱）。"""
     if not QQ_EMAIL or not QQ_SMTP_PASSWORD:
-        raise RuntimeError("QQ_EMAIL 或 QQ_SMTP_PASSWORD 未配置，请在 .env 中填写。")
+        print("[警告] QQ_EMAIL 或 QQ_SMTP_PASSWORD 未配置，跳过邮件发送。")
+        return
 
     tz_cst = timezone(timedelta(hours=8))
     today_str = datetime.now(tz_cst).strftime("%Y-%m-%d")
