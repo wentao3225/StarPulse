@@ -1,0 +1,79 @@
+name: StarPulse Daily
+
+on:
+  schedule:
+    - cron: '0 1 * * *'   # 每天 UTC 1:00 = 北京时间 9:00
+  workflow_dispatch:        # 支持手动触发
+    inputs:
+      dry_run:
+        description: 'dry-run 模式（只抓取，不写飞书/不发邮件）'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      top:
+        description: '抓取前 N 个仓库'
+        required: false
+        default: '30'
+
+jobs:
+  run-starpulse:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore dedup state cache
+        uses: actions/cache/restore@v4
+        with:
+          path: dedup_state.json
+          key: dedup-state-${{ github.run_number }}
+          restore-keys: |
+            dedup-state-
+
+      - name: Run StarPulse (scheduled)
+        if: github.event_name == 'schedule'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_BITABLE_APP_TOKEN: ${{ secrets.FEISHU_BITABLE_APP_TOKEN }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          QQ_EMAIL: ${{ secrets.QQ_EMAIL }}
+          QQ_SMTP_PASSWORD: ${{ secrets.QQ_SMTP_PASSWORD }}
+        run: python main.py --top 30 --period weekly --news
+
+      - name: Run StarPulse (manual)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_BITABLE_APP_TOKEN: ${{ secrets.FEISHU_BITABLE_APP_TOKEN }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          QQ_EMAIL: ${{ secrets.QQ_EMAIL }}
+          QQ_SMTP_PASSWORD: ${{ secrets.QQ_SMTP_PASSWORD }}
+        run: |
+          python main.py \
+            --top ${{ github.event.inputs.top || '30' }} \
+            --period weekly \
+            --news \
+            ${{ github.event.inputs.dry_run == 'true' && '--dry-run' || '' }}
+
+      - name: Save dedup state cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: dedup_state.json
+          key: dedup-state-${{ github.run_number }}
