@@ -56,12 +56,65 @@ def _build_news_section(title: str, items: list[NewsItem], accent: str) -> str:
     </div>"""
 
 
-def _build_html(ai_news: list[NewsItem], global_news: list[NewsItem]) -> str:
+def _build_repos_section(repos: list[dict], llm_map: dict) -> str:
+    """渲染热门仓库板块的 HTML。"""
+    rows = ""
+    for i, repo in enumerate(repos, 1):
+        name = repo.get("name", "")
+        url = repo.get("url", "#")
+        stars = repo.get("stars", 0)
+        language = repo.get("language") or "N/A"
+        description = repo.get("description") or ""
+        content = llm_map.get(repo.get("url", ""), {})
+        interpretation = content.get("仓库解读", "")
+        quickstart = content.get("快速上手", "")
+
+        interp_html = ""
+        if interpretation:
+            interp_html = f'<p style="margin:6px 0 2px 0;color:#444;font-size:13px;line-height:1.6;"><strong>解读：</strong>{interpretation}</p>'
+        qs_html = ""
+        if quickstart:
+            qs_html = f'<p style="margin:4px 0 0 0;color:#555;font-size:13px;line-height:1.6;"><strong>快速上手：</strong>{quickstart}</p>'
+
+        rows += f"""
+        <tr>
+          <td style="padding:14px 0;border-bottom:1px solid #f0f0f0;">
+            <div>
+              <span style="color:#888;font-size:13px;font-weight:bold;margin-right:6px;">{i:02d}</span>
+              <a href="{url}" style="color:#1a1a2e;font-size:15px;font-weight:600;text-decoration:none;">{name}</a>
+              <span style="background:#e8f4ff;color:#4a6cf7;border-radius:3px;padding:1px 6px;font-size:11px;margin-left:8px;">{language}</span>
+              <span style="color:#e67e22;font-size:12px;margin-left:8px;">⭐ {stars:,}</span>
+            </div>
+            {f'<p style="margin:4px 0 0 0;color:#777;font-size:13px;">{description}</p>' if description else ''}
+            {interp_html}
+            {qs_html}
+          </td>
+        </tr>"""
+
+    return f"""
+    <div style="margin-bottom:32px;">
+      <h2 style="margin:0 0 12px 0;padding:8px 14px;background:#e67e22;color:#fff;
+                 border-radius:6px;font-size:16px;letter-spacing:1px;">
+        🔥 GitHub 热门仓库
+      </h2>
+      <table style="width:100%;border-collapse:collapse;">
+        {rows}
+      </table>
+    </div>"""
+
+
+def _build_html(
+    ai_news: list[NewsItem],
+    global_news: list[NewsItem],
+    repos: list[dict] | None = None,
+    llm_map: dict | None = None,
+) -> str:
     tz_cst = timezone(timedelta(hours=8))
     today_str = datetime.now(tz_cst).strftime("%Y年%m月%d日")
 
     ai_section = _build_news_section("🤖 AI 资讯", ai_news, "#4a6cf7")
     global_section = _build_news_section("🌍 全球资讯", global_news, "#27ae60")
+    repos_section = _build_repos_section(repos, llm_map or {}) if repos else ""
 
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
@@ -79,6 +132,7 @@ def _build_html(ai_news: list[NewsItem], global_news: list[NewsItem]) -> str:
 
     <!-- Body -->
     <div style="padding:28px 32px;">
+      {repos_section}
       {ai_section}
       {global_section}
     </div>
@@ -94,17 +148,22 @@ def _build_html(ai_news: list[NewsItem], global_news: list[NewsItem]) -> str:
 </html>"""
 
 
-def send_daily_news(ai_news: list[NewsItem], global_news: list[NewsItem]) -> None:
-    """发送每日资讯邮件（收发同一个 QQ 邮箱）。"""
+def send_daily_report(
+    ai_news: list[NewsItem],
+    global_news: list[NewsItem],
+    repos: list[dict] | None = None,
+    llm_map: dict | None = None,
+) -> None:
+    """发送合并邮件：热门仓库报告（如有）+ 资讯（收发同一个 QQ 邮箱）。"""
     if not QQ_EMAIL or not QQ_SMTP_PASSWORD:
         print("[警告] QQ_EMAIL 或 QQ_SMTP_PASSWORD 未配置，跳过邮件发送。")
         return
 
     tz_cst = timezone(timedelta(hours=8))
     today_str = datetime.now(tz_cst).strftime("%Y-%m-%d")
-    subject = f"⭐ StarPulse 每日简报 {today_str} | AI资讯 & 全球资讯"
+    subject = f"⭐ StarPulse 每日简报 {today_str} | 热门仓库 & AI资讯 & 全球资讯"
 
-    html_body = _build_html(ai_news, global_news)
+    html_body = _build_html(ai_news, global_news, repos=repos, llm_map=llm_map)
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
@@ -118,3 +177,8 @@ def send_daily_news(ai_news: list[NewsItem], global_news: list[NewsItem]) -> Non
         server.sendmail(QQ_EMAIL, [QQ_EMAIL], msg.as_bytes())
 
     print(f"[email_sender] 邮件已发送至 {QQ_EMAIL}")
+
+
+def send_daily_news(ai_news: list[NewsItem], global_news: list[NewsItem]) -> None:
+    """向后兼容的包装函数，直接调用 send_daily_report。"""
+    send_daily_report(ai_news, global_news)
