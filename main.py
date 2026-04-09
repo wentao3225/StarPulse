@@ -1,18 +1,16 @@
 import argparse
 import sys
-from datetime import datetime
 from fetcher import fetch_top_repos
 from formatter import print_repos, console
-from exporter import export_json, export_csv
 from dedup import DedupState
-from feishu import FeishuClient
 from readme_fetcher import fetch_readme
 from llm import generate_repo_content_batch
+from markdown_reporter import save_report
 from config import get_week_label
 
 
 def run_github(args):
-    """抓取 GitHub 热门仓库 → 去重 → AI 并发生成 → 写入飞书"""
+    """抓取 GitHub 热门仓库 → 去重 → AI 并发生成 → 写入 Markdown 周报"""
     console.print(
         f"[bold]正在抓取 GitHub 热门仓库...[/bold] period=[cyan]{args.period}[/cyan] top=[cyan]{args.top}[/cyan]"
     )
@@ -59,41 +57,12 @@ def run_github(args):
         console.print(f"[dim]并发生成 AI 解读（{len(to_write)} 条）...[/dim]")
         llm_map = generate_repo_content_batch(to_write)
 
-        feishu = FeishuClient()
-        table_id = feishu.get_or_create_table(week)
-        feishu.ensure_fields(table_id, ["仓库解读", "快速上手"])
-        today = datetime.utcnow().strftime("%Y-%m-%d")
-
-        for repo in to_write:
-            llm_content = llm_map.get(repo["url"], {"仓库解读": "", "快速上手": ""})
-            fields = {
-                "仓库名": repo["name"],
-                "描述": repo["description"],
-                "Stars": repo["stars"],
-                "Star 涨幅": repo["_star_increase"],
-                "语言": repo["language"],
-                "链接": {"link": repo["url"], "text": repo["name"]},
-                "首次入榜时间": repo["first_seen"],
-                "最后更新时间": today,
-                "仓库解读": llm_content["仓库解读"],
-                "快速上手": llm_content["快速上手"],
-            }
-            record_id = None
-            if repo["_dedup_action"] == "update" and dedup.is_loaded_from_file():
-                record_id = feishu.find_record_id(table_id, repo["url"])
-            feishu.upsert_record(table_id, fields, record_id=record_id)
-
-        console.print(f"[green]已写入飞书表格 {week}，共 {len(to_write)} 条[/green]")
+        # 生成 Markdown 周报
+        path = save_report(week, to_write, llm_map)
+        console.print(f"[green]已生成周报：{path}（共 {len(to_write)} 条）[/green]")
         dedup.save()
     elif args.dry_run:
-        console.print("[yellow]dry-run 模式，跳过飞书写入（去重状态不保存）[/yellow]")
-
-    if args.export == "json":
-        path = export_json(repos, args.period)
-        console.print(f"[green]已导出 JSON：{path}[/green]")
-    elif args.export == "csv":
-        path = export_csv(repos, args.period)
-        console.print(f"[green]已导出 CSV：{path}[/green]")
+        console.print("[yellow]dry-run 模式，跳过 README 抓取和报告生成（去重状态不保存）[/yellow]")
 
 
 def run_news(args):
@@ -119,8 +88,7 @@ def main():
     parser.add_argument("--top", type=int, default=30, help="抓取前 N 个仓库（默认 30）")
     parser.add_argument("--period", choices=["today", "weekly", "monthly"], default="weekly")
     parser.add_argument("--lang", type=str, default=None, help="按编程语言筛选")
-    parser.add_argument("--export", choices=["json", "csv"], default=None, help="同时导出本地文件")
-    parser.add_argument("--dry-run", action="store_true", help="只抓取和去重，不写入飞书/不发送邮件")
+    parser.add_argument("--dry-run", action="store_true", help="只抓取和去重，不生成报告/不发送邮件")
     parser.add_argument("--token", type=str, default=None, help="GitHub Token（优先级高于 .env）")
     parser.add_argument(
         "--news",

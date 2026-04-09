@@ -6,7 +6,7 @@ on:
   workflow_dispatch:        # 支持手动触发
     inputs:
       dry_run:
-        description: 'dry-run 模式（只抓取，不写飞书/不发邮件）'
+        description: 'dry-run 模式（只抓取，不生成报告/不发邮件）'
         required: false
         default: 'false'
         type: choice
@@ -21,6 +21,8 @@ on:
 jobs:
   run-starpulse:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -48,9 +50,6 @@ jobs:
         if: github.event_name == 'schedule'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
-          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
-          FEISHU_BITABLE_APP_TOKEN: ${{ secrets.FEISHU_BITABLE_APP_TOKEN }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           QQ_EMAIL: ${{ secrets.QQ_EMAIL }}
           QQ_SMTP_PASSWORD: ${{ secrets.QQ_SMTP_PASSWORD }}
@@ -60,9 +59,6 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
-          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
-          FEISHU_BITABLE_APP_TOKEN: ${{ secrets.FEISHU_BITABLE_APP_TOKEN }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           QQ_EMAIL: ${{ secrets.QQ_EMAIL }}
           QQ_SMTP_PASSWORD: ${{ secrets.QQ_SMTP_PASSWORD }}
@@ -72,6 +68,15 @@ jobs:
             --period weekly \
             --news \
             ${{ github.event.inputs.dry_run == 'true' && '--dry-run' || '' }}
+
+      - name: Commit and push reports
+        if: github.event.inputs.dry_run != 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add reports/
+          git diff --cached --quiet || git commit -m "report: $(date -u +%Y-%m-%d) weekly digest"
+          git push
 
       - name: Save dedup state cache
         if: always()
