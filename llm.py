@@ -42,7 +42,7 @@ def _call_api(name: str, description: str, language: str, readme: str) -> dict:
                 {"role": "user", "content": prompt},
             ],
             "temperature": 0.7,
-            "max_tokens": 800,
+            "max_tokens": 600,
             "response_format": {"type": "json_object"},
         },
         timeout=60,

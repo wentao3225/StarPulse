@@ -18,9 +18,12 @@ def fetch_readme(full_name: str) -> str:
         data = resp.json()
         content = data.get("content", "")
         encoding = data.get("encoding", "base64")
+        _MAX_CHARS = 600
         if encoding == "base64":
-            return base64.b64decode(content.replace("\n", "")).decode("utf-8", errors="ignore")
-        return content
+            text = base64.b64decode(content.replace("\n", "")).decode("utf-8", errors="ignore")
+        else:
+            text = content
+        return text[:_MAX_CHARS]
     except Exception as e:
         print(f"[readme_fetcher] 抓取 {full_name} 失败: {e}")
         return ""
