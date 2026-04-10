@@ -98,57 +98,64 @@ def generate_repo_content_batch(repos: list[dict]) -> dict[str, dict]:
     return results
 
 
-def _translate_to_chinese(text: str) -> str:
-    """将文本翻译为简体中文，失败时返回原文。"""
-    if not text or not text.strip():
-        return text
-    resp = requests.post(
-        f"{DEEPSEEK_API_BASE}/chat/completions",
-        headers={
-            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-            "Content-Type": "application/json",
-        },
-        json={
-            "model": DEEPSEEK_MODEL,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "你是一名专业翻译，将用户提供的文本翻译为简体中文。"
-                        "只输出翻译结果，不添加任何解释或额外内容。"
-                        "若文本已是简体中文，则原样返回。"
-                    ),
-                },
-                {"role": "user", "content": text},
-            ],
-            "temperature": 0.3,
-            "max_tokens": 300,
-        },
-        timeout=30,
-    )
-    resp.raise_for_status()
-    choices = resp.json().get("choices", [])
-    if not choices:
-        return text
-    return choices[0]["message"]["content"].strip()
-
-
 def translate_news_items(items: list) -> list:
     """
-    并发将新闻条目的标题和摘要翻译为简体中文，返回翻译后的新列表。
+    批量将新闻条目的标题和摘要翻译为简体中文（单次 API 调用），返回翻译后的新列表。
     每个 item 为 NewsItem TypedDict（含 title/summary 字段）。
     """
-    def _translate_item(item):
-        translated = dict(item)
-        try:
-            translated["title"] = _translate_to_chinese(item.get("title", ""))
-        except Exception as e:
-            print(f"[llm] 翻译标题失败: {e}")
-        try:
-            translated["summary"] = _translate_to_chinese(item.get("summary", ""))
-        except Exception as e:
-            print(f"[llm] 翻译摘要失败: {e}")
-        return translated
+    if not items:
+        return items
 
-    with ThreadPoolExecutor(max_workers=8) as executor:
-        return list(executor.map(_translate_item, items))
+    # 构造待翻译的结构化数组
+    payload = [
+        {"i": i, "title": item.get("title", ""), "summary": item.get("summary", "")}
+        for i, item in enumerate(items)
+    ]
+
+    try:
+        resp = requests.post(
+            f"{DEEPSEEK_API_BASE}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": DEEPSEEK_MODEL,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "你是一名专业翻译。用户给你一个 JSON 对象，其中 items 字段是数组，"
+                            "每个元素包含 i（索引）、title、summary 字段。"
+                            "将所有 title 和 summary 翻译为简体中文，已是简体中文的保持不变。"
+                            "严格按如下格式返回，不添加任何多余内容：\n"
+                            '{"items": [{"i": 0, "title": "...", "summary": "..."}, ...]}'
+                        ),
+                    },
+                    {"role": "user", "content": json.dumps({"items": payload}, ensure_ascii=False)},
+                ],
+                "temperature": 0.3,
+                "max_tokens": 6000,
+                "response_format": {"type": "json_object"},
+            },
+            timeout=120,
+        )
+        resp.raise_for_status()
+        raw = resp.json()["choices"][0]["message"]["content"]
+        translated_list = json.loads(raw).get("items", [])
+
+        # 按索引回填
+        index_map = {entry["i"]: entry for entry in translated_list}
+        result = []
+        for i, item in enumerate(items):
+            new_item = dict(item)
+            if i in index_map:
+                new_item["title"] = index_map[i].get("title", item.get("title", ""))
+                new_item["summary"] = index_map[i].get("summary", item.get("summary", ""))
+            result.append(new_item)
+        return result
+
+    except Exception as e:
+        print(f"[llm] 批量翻译失败: {e}，返回原文")
+        return list(items)
+
