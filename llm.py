@@ -126,8 +126,12 @@ def translate_news_items(items: list) -> list:
                         "role": "system",
                         "content": (
                             "你是一名专业翻译。用户给你一个 JSON 对象，其中 items 字段是数组，"
-                            "每个元素包含 i（索引）、title、summary 字段。"
-                            "将所有 title 和 summary 翻译为简体中文，已是简体中文的保持不变。"
+                            "每个元素包含 i（索引）、title、summary 字段。\n"
+                            "规则：\n"
+                            "1. 英文内容 → 翻译为简体中文\n"
+                            "2. 繁体中文内容 → 转换为简体中文\n"
+                            "3. 已是简体中文 → 保持原文不变\n"
+                            "4. 所有元素必须全部输出，不可遗漏\n"
                             "严格按如下格式返回，不添加任何多余内容：\n"
                             '{"items": [{"i": 0, "title": "...", "summary": "..."}, ...]}'
                         ),
