@@ -2,7 +2,7 @@ name: StarPulse Daily
 
 on:
   schedule:
-    - cron: '0 1 */3 * *'  # 每隔三天 UTC 1:00 = 北京时间 9:00
+    - cron: '0 1 * * *'  # 每天 UTC 1:00 = 北京时间 9:00
   workflow_dispatch:        # 支持手动触发
     inputs:
       dry_run:
